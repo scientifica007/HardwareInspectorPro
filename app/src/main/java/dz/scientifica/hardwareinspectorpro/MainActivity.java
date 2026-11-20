@@ -186,11 +186,8 @@ public final class MainActivity extends Activity {
 
         LinearLayout testBlock = vertical();
         testBlock.addView(text("اختبارات عملية عند الطلب", 17, Color.WHITE, true));
-        buttons(testBlock, button("البوصلة الحية + الجيروسكوب", Color.rgb(40, 113, 145),
-                v -> startActivity(new Intent(this, InstrumentsActivity.class))),
-                button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
         buttons(testBlock, button("المستشعرات الحية", Color.rgb(40, 113, 145), v -> testSensors()),
-                button("اختبار الاهتزاز", Color.rgb(40, 113, 145), v -> vibrate()));
+                button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
         buttons(testBlock, button("اهتزاز", Color.rgb(40, 113, 145), v -> vibrate()),
                 button("صوت السماعة", Color.rgb(40, 113, 145), v -> speaker()));
         buttons(testBlock, button("الميكروفون (dBFS)", Color.rgb(40, 113, 145), v -> microphone()),
@@ -239,11 +236,11 @@ public final class MainActivity extends Activity {
                 new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US);
         ageInfo.setText("أول تشغيل رصده التطبيق: " +
                 (first <= 0 ? "غير متاح" : format.format(new java.util.Date(first))) +
-                "\\nلا يمكن الجزم بتاريخ تصنيع الهاتف أو تشغيله الأول دون سجل موثوق.");
+                "\nلا يمكن الجزم بتاريخ تصنيع الهاتف أو تشغيله الأول دون سجل موثوق.");
         monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.duration(p.getLong("monitor_ms", 0)) +
-                "\\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
-                "\\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
-                "\\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
+                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
+                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
+                "\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
     }
 
     private void startMonitor() {
