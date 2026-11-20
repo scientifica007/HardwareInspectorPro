@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION=$(sed -n -E 's/.*versionName = "([^"]+)".*/\\1/p' app/build.gradle.kts | head -n 1)
+          VERSION=$(sed -n -E 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)
           test -n "$VERSION"
           TAG="v$VERSION"
           RELEASE_FILE="HardwareInspectorPro-$TAG-debug.apk"
@@ -47,8 +47,8 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists: skip (releases are immutable per version)"
           else
-            gh release create "$TAG" "$RELEASE_FILE" "$RELEASE_FILE.sha256" \\
-              --title "Hardware Inspector Pro $TAG (test APK)" \\
-              --notes "Experimental native Android APK for OPPO A12 (Android 9) and compatible phones. Manual first-use date entry removed. Compass, gyro and read-only eMMC wear checks included. This is a DEBUG-signed APK, not a production distribution. Android may require uninstalling older debug builds due to signing-key differences; export reports first. No root needed. Wear counters may be unavailable because of OEM restrictions." \\
+            gh release create "$TAG" "$RELEASE_FILE" "$RELEASE_FILE.sha256" \
+              --title "Hardware Inspector Pro $TAG (test APK)" \
+              --notes "Experimental native Android APK for OPPO A12 (Android 9) and compatible phones. Manual first-use date entry removed. Compass, gyro and read-only eMMC wear checks included. This is a DEBUG-signed APK, not a production distribution. Android may require uninstalling older debug builds due to signing-key differences; export reports first. No root needed. Wear counters may be unavailable because of OEM restrictions." \
               --prerelease --target "$GITHUB_SHA"
           fi
