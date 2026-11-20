@@ -190,7 +190,7 @@ public final class MainActivity extends Activity {
                 v -> startActivity(new Intent(this, InstrumentsActivity.class))),
                 button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
         buttons(testBlock, button("المستشعرات الحية", Color.rgb(40, 113, 145), v -> testSensors()),
-                button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
+                button("اختبار الاهتزاز", Color.rgb(40, 113, 145), v -> vibrate()));
         buttons(testBlock, button("اهتزاز", Color.rgb(40, 113, 145), v -> vibrate()),
                 button("صوت السماعة", Color.rgb(40, 113, 145), v -> speaker()));
         buttons(testBlock, button("الميكروفون (dBFS)", Color.rgb(40, 113, 145), v -> microphone()),
