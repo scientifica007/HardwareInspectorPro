@@ -5,7 +5,7 @@
 ## البناء والتثبيت
 افتح المشروع في Android Studio، أو نزّل APK من تبويب **Actions** > **Build Android APK** > آخر تشغيل ناجح > **HardwareInspectorPro-debug-apk**. فك الضغط عن ملف Artifact، ثم ثبّت `app-debug.apk` على الهاتف بعد الموافقة على التثبيت من المصدر المحدد.
 
-> هذه نسخة أولية v0.2.0. لم تُختبر ميدانيًا على OPPO A12 بعد؛ الاختبار الأول هو بناء APK من GitHub Actions ثم تشغيله على الهاتف.
+> هذه نسخة أولية v0.2.1. لم تُختبر ميدانيًا على OPPO A12 بعد؛ الاختبار الأول هو بناء APK من GitHub Actions ثم تشغيله على الهاتف.
 
 ## ما الذي يقرأه؟
 - طراز الجهاز وإصدار النظام واللوحة والمنصة والذاكرة RAM وقسم التخزين.
@@ -42,3 +42,9 @@
 لا تُجري أي عمليات root أو أوامر shell للتغيير. بدون Root/امتيازات الشركة قد لا تتاح معلومات الاهتراء على ColorOS.
 
 [وثائق Android الخاصة باتجاه البوصلة](https://developer.android.com/develop/sensors-and-location/sensors/sensors_position) و[مصدر Android المفتوح لعدادات eMMC](https://android.googlesource.com/platform/packages/services/Car/+/master/service/src/com/android/car/storagemonitoring/EMmcWearInformationProvider.java).
+
+## v0.2.1: زيادة فحص عمر البطارية
+- عندما تسمح نواة Android/ColorOS، يقرأ التطبيق `/sys/class/power_supply/battery/cycle_count` لعرض عدد دورات الشحن المُبلّغ عنها؛ قد يكون محجوبًا على Android 9.
+- يحاول أيضًا قراءة `charge_full` و`charge_full_design` واحتساب نسبة السعة الحالية إلى التصميم **فقط إذا كان العدّادان متسقين**؛ هي مؤشر يبلّغ عنه السائق وليست معايرة فعلية دقيقة لصحة البطارية.
+- لا يعني الصفر في عداد الدورات أن البطارية جديدة، ولا يدل غياب البيانات على تلفها.
+- تفاصيل مرجعية: [وثائق sysfs لبطارية Linux](https://android.googlesource.com/kernel/common/+/android-mainline/Documentation/ABI/testing/sysfs-class-power).
