@@ -31,6 +31,7 @@ public final class EventJournal {
     public static final String CHARGING_START = "charging_start";
     public static final String CHARGING_END = "charging_end";
     public static final String GAP = "observation_gap";
+    public static final String RESTORED = "backup_restored";
 
     private EventJournal() {}
 
@@ -83,6 +84,27 @@ public final class EventJournal {
         }
     }
 
+    /** Restore an exported journal only if this installation has no journal yet. */
+    public static void restoreHistory(Context context, JSONArray history, long alreadyPruned) {
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(context);
+            if (readArray(p).length() != 0) {
+                throw new IllegalStateException("يوجد سجل أحداث حالي؛ لا يمكن استبداله");
+            }
+            JSONArray retained = new JSONArray();
+            int cut = Math.max(0, history.length() - MAX_EVENTS);
+            for (int i = cut; i < history.length(); i++) {
+                JSONObject item = history.optJSONObject(i);
+                if (item != null && item.has("event") && item.has("timestampMs"))
+                    retained.put(item);
+            }
+            if (!p.edit().putString(KEY, retained.toString())
+                    .putLong(PRUNED, Math.max(0, alreadyPruned) + cut).commit()) {
+                throw new IllegalStateException("تعذر استرجاع سجل الأحداث");
+            }
+        }
+    }
+
     public static JSONArray events(Context context) {
         synchronized (LOCK) {
             return readArray(prefs(context));
@@ -105,6 +127,7 @@ public final class EventJournal {
             case CHARGING_START: return "بدء الشحن";
             case CHARGING_END: return "انتهاء الشحن";
             case GAP: return "فجوة في رصد الحالات";
+            case RESTORED: return "استرجاع بيانات من تقرير سابق";
             default: return event;
         }
     }
