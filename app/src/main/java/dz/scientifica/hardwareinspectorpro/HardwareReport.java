@@ -425,8 +425,8 @@ public final class HardwareReport {
                 s.append("  ").append(row.getKey()).append(": ").append(row.getValue()).append("\n");
             s.append("\n");
         }
-        s.append("سجل المراقبة الزمني (آخر 30 حدثًا)\\n");
-        s.append(EventJournal.recentText(context, 30)).append("\\n");
+        s.append("سجل المراقبة الزمني (آخر 30 حدثًا)\n");
+        s.append(EventJournal.recentText(context, 30)).append("\n");
         return s.toString();
     }
 
