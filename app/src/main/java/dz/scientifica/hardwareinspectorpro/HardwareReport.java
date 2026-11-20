@@ -155,6 +155,8 @@ public final class HardwareReport {
             put(s, "دورات الشحن طوال العمر", "لا تتيحها واجهة Android " + Build.VERSION.RELEASE + " القياسية");
         }
         put(s, "نسبة الصحة والسعة الأصلية", NA + "؛ لا يمكن استنتاجها من نسبة الشحن");
+        for (Map.Entry<String, String> row : BatteryWear.probe().entrySet())
+            put(s, row.getKey(), row.getValue());
     }
 
     private void cpuMemory() {
