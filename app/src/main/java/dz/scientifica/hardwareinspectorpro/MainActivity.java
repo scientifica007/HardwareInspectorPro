@@ -2,6 +2,7 @@ package dz.scientifica.hardwareinspectorpro;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -42,6 +43,9 @@ import android.widget.Toast;
 import android.graphics.drawable.GradientDrawable;
 
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -53,6 +57,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFY = 103;
     private static final int REQUEST_SAVE = 104;
     private static final int REQUEST_BT = 105;
+    private static final int REQUEST_IMPORT = 106;
     private static final int BG = Color.rgb(10, 17, 32);
     private static final int CARD = Color.rgb(22, 32, 53);
     private static final int ACCENT = Color.rgb(56, 189, 248);
@@ -171,6 +176,8 @@ public final class MainActivity extends Activity {
         buttons(controls,
                 button("نسخ التقرير", Color.rgb(40, 113, 145), v -> copy()),
                 button("البوصلة والجيروسكوب", Color.rgb(42, 115, 88), v -> startActivity(new Intent(this, InstrumentsActivity.class))));
+        controls.addView(button("استرجاع عدادات المراقبة من تقرير JSON محفوظ",
+                Color.rgb(42, 115, 88), v -> importReport()));
         box(root, controls);
 
         LinearLayout ageBlock = vertical();
@@ -311,6 +318,50 @@ public final class MainActivity extends Activity {
         show("نُسخ التقرير النصي");
     }
 
+    private void importReport() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/json");
+        startActivityForResult(i, REQUEST_IMPORT);
+    }
+
+    private void confirmReportImport(Intent data) {
+        if (data == null || data.getData() == null) return;
+        try (InputStream in = getContentResolver().openInputStream(data.getData())) {
+            if (in == null) throw new IllegalArgumentException("تعذر فتح ملف JSON");
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = in.read(buffer)) != -1) {
+                if (bytes.size() + count > 2_000_000) {
+                    throw new IllegalArgumentException("التقرير أكبر من الحد المسموح (2 MB)");
+                }
+                bytes.write(buffer, 0, count);
+            }
+            MonitorBackup.Snapshot backup = MonitorBackup.parse(this,
+                    new JSONObject(new String(bytes.toByteArray(), StandardCharsets.UTF_8)));
+            new AlertDialog.Builder(this)
+                    .setTitle("استرجاع عدادات المراقبة")
+                    .setMessage(MonitorBackup.preview(backup))
+                    .setNegativeButton("إلغاء", (d, which) -> d.dismiss())
+                    .setPositiveButton("استرجاع", (d, which) -> {
+                        try {
+                            MonitorBackup.restore(this, backup);
+                            refresh();
+                            show("تم استرجاع العدادات المتاحة من التقرير");
+                        } catch (Exception e) {
+                            new AlertDialog.Builder(this)
+                                    .setTitle("تعذر الاسترجاع")
+                                    .setMessage(e.getMessage())
+                                    .setPositiveButton("حسنًا", null).show();
+                        }
+                    }).show();
+        } catch (Exception e) {
+            new AlertDialog.Builder(this).setTitle("ملف غير صالح للاسترجاع")
+                    .setMessage(e.getMessage()).setPositiveButton("حسنًا", null).show();
+        }
+    }
+
     private void export() {
         refresh();
         if (latest == null) return;
@@ -324,6 +375,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == REQUEST_IMPORT && result == RESULT_OK) {
+            confirmReportImport(data);
+            return;
+        }
         if (code == REQUEST_SAVE && result == RESULT_OK && data != null && data.getData() != null && exportJson != null) {
             try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
                 if (out != null) {
