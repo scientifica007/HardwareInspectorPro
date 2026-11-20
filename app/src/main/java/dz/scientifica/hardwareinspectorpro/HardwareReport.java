@@ -268,16 +268,29 @@ public final class HardwareReport {
         try {
             WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifi != null) {
-                put(s, "Wi-Fi", wifi.isWifiEnabled() ? "مفعّل" : "معطّل");
-                if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    WifiInfo info = wifi.getConnectionInfo();
-                    if (info != null) {
-                        put(s, "اسم الشبكة الحالية", info.getSSID());
-                        put(s, "قوة الإشارة", info.getRssi() + " dBm");
-                        put(s, "سرعة الربط المعلنة", info.getLinkSpeed() + " Mbps (ليست سرعة الإنترنت)");
-                        put(s, "تردد Wi-Fi", info.getFrequency() + " MHz");
+                boolean enabled = wifi.isWifiEnabled();
+                put(s, "Wi-Fi", enabled ? "مفعّل" : "معطّل");
+                if (!enabled) {
+                    put(s, "تفاصيل Wi-Fi", "الواجهة معطّلة؛ لا تُعرض قياسات قديمة أو قيم غير صالحة");
+                } else if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    WifiInfo connection = wifi.getConnectionInfo();
+                    if (connection == null || connection.getNetworkId() < 0
+                            || connection.getSSID() == null
+                            || WifiManager.UNKNOWN_SSID.equals(connection.getSSID())) {
+                        put(s, "تفاصيل Wi-Fi", "Wi-Fi مفعّل لكن لا توجد بيانات اتصال حالية صالحة");
+                    } else {
+                        put(s, "اسم شبكة Wi-Fi الحالية", connection.getSSID());
+                        int rssi = connection.getRssi();
+                        int speed = connection.getLinkSpeed();
+                        int mhz = connection.getFrequency();
+                        if (rssi > -127 && rssi < 0) put(s, "قوة إشارة Wi-Fi", rssi + " dBm");
+                        if (speed > 0) put(s, "سرعة ربط Wi-Fi", speed + " Mbps (ليست سرعة الإنترنت)");
+                        if (mhz > 0) put(s, "تردد Wi-Fi", mhz + " MHz");
                     }
-                } else put(s, "SSID / RSSI", "يتطلب إذن الموقع وتفعيل خدماته");
+                } else {
+                    put(s, "تفاصيل Wi-Fi", "يلزم إذن الموقع لقراءة معلومات Wi-Fi في Android 9");
+                }
             }
         } catch (Exception e) { put(s, "تفاصيل Wi-Fi", NA); }
         try {
