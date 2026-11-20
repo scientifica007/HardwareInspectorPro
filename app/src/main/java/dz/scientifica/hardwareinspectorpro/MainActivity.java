@@ -2,7 +2,6 @@ package dz.scientifica.hardwareinspectorpro;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -36,7 +35,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.DatePicker;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -45,9 +43,6 @@ import android.graphics.drawable.GradientDrawable;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.Period;
-import java.util.Calendar;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -174,11 +169,11 @@ public final class MainActivity extends Activity {
                 button("حفظ تقرير JSON", Color.rgb(100, 89, 180), v -> export()));
         buttons(controls,
                 button("نسخ التقرير", Color.rgb(40, 113, 145), v -> copy()),
-                button("تاريخ أول استعمال", Color.rgb(42, 115, 88), v -> chooseDate()));
+                button("البوصلة والجيروسكوب", Color.rgb(42, 115, 88), v -> startActivity(new Intent(this, InstrumentsActivity.class))));
         box(root, controls);
 
         LinearLayout ageBlock = vertical();
-        ageBlock.addView(text("عمر الهاتف والسجل التراكمي", 17, Color.WHITE, true));
+        ageBlock.addView(text("عدادات استعمال الهاتف وتاريخ الرصد", 17, Color.WHITE, true));
         ageInfo = text("", 13, MUTED, false);
         ageBlock.addView(ageInfo);
         monitorInfo = text("", 13, MUTED, false);
@@ -186,11 +181,14 @@ public final class MainActivity extends Activity {
         buttons(ageBlock,
                 button("بدء مراقبة مستمرة", Color.rgb(40, 126, 91), v -> startMonitor()),
                 button("إيقاف المراقبة", Color.rgb(150, 67, 73), v -> stopMonitor()));
-        ageBlock.addView(text("التسجيل يبدأ من هذه اللحظة فقط. لا تُستعاد ساعات استخدام قديمة، وقد يقيّد ColorOS عمل الخلفية.", 12, Color.rgb(236, 202, 129), false));
+        ageBlock.addView(text("لا تحتاج إدخال تاريخ يدوي. يُقرأ وقت الإقلاع الحقيقي وتُجمع أزمنة الشاشة والشحن منذ بدء المراقبة فقط. قد يوقف ColorOS المراقبة في الخلفية.", 12, Color.rgb(236, 202, 129), false));
         box(root, ageBlock);
 
         LinearLayout testBlock = vertical();
         testBlock.addView(text("اختبارات عملية عند الطلب", 17, Color.WHITE, true));
+        buttons(testBlock, button("البوصلة الحية + الجيروسكوب", Color.rgb(40, 113, 145),
+                v -> startActivity(new Intent(this, InstrumentsActivity.class))),
+                button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
         buttons(testBlock, button("المستشعرات الحية", Color.rgb(40, 113, 145), v -> testSensors()),
                 button("اللمس المتعدد", Color.rgb(40, 113, 145), v -> testTouch()));
         buttons(testBlock, button("اهتزاز", Color.rgb(40, 113, 145), v -> vibrate()),
@@ -236,38 +234,16 @@ public final class MainActivity extends Activity {
 
     private void displayAge() {
         SharedPreferences p = getSharedPreferences(MonitorService.PREFS, MODE_PRIVATE);
-        String first = p.getString("first_use", "");
-        if (first.isEmpty()) ageInfo.setText("العمر الفعلي: لا يعرف Android تاريخ أول استعمال لهذا الجهاز. يمكنك إدخاله يدويًا.");
-        else {
-            try {
-                Period age = Period.between(LocalDate.parse(first), LocalDate.now());
-                ageInfo.setText("منذ أول استعمال مُدخل يدويًا (" + first + "): " +
-                        age.getYears() + " سنة، " + age.getMonths() + " شهر، " + age.getDays() + " يوم. ليس تاريخ تصنيع مثبتًا.");
-            } catch (Exception e) {
-                ageInfo.setText("تاريخ الاستعمال المدخل غير صالح");
-            }
-        }
+        long first = p.getLong("first_seen", 0L);
+        java.text.SimpleDateFormat format =
+                new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US);
+        ageInfo.setText("أول تشغيل رصده التطبيق: " +
+                (first <= 0 ? "غير متاح" : format.format(new java.util.Date(first))) +
+                "\\nلا يمكن الجزم بتاريخ تصنيع الهاتف أو تشغيله الأول دون سجل موثوق.");
         monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.duration(p.getLong("monitor_ms", 0)) +
-                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
-                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
-                "\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
-    }
-
-    private void chooseDate() {
-        Calendar c = Calendar.getInstance();
-        DatePickerDialog dialog = new DatePickerDialog(this,
-                (view, year, month, day) -> {
-                    LocalDate date = LocalDate.of(year, month + 1, day);
-                    if (date.isAfter(LocalDate.now())) {
-                        show("لا يمكن أن يكون تاريخ أول استعمال في المستقبل");
-                        return;
-                    }
-                    getSharedPreferences(MonitorService.PREFS, MODE_PRIVATE).edit()
-                            .putString("first_use", date.toString()).apply();
-                    refresh();
-                }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH));
-        dialog.getDatePicker().setMaxDate(System.currentTimeMillis());
-        dialog.show();
+                "\\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
+                "\\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
+                "\\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
     }
 
     private void startMonitor() {
