@@ -2,6 +2,7 @@ package dz.scientifica.hardwareinspectorpro;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -42,6 +43,9 @@ import android.widget.Toast;
 import android.graphics.drawable.GradientDrawable;
 
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -53,6 +57,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFY = 103;
     private static final int REQUEST_SAVE = 104;
     private static final int REQUEST_BT = 105;
+    private static final int REQUEST_IMPORT = 106;
     private static final int BG = Color.rgb(10, 17, 32);
     private static final int CARD = Color.rgb(22, 32, 53);
     private static final int ACCENT = Color.rgb(56, 189, 248);
@@ -63,6 +68,7 @@ public final class MainActivity extends Activity {
     private TextView testOutput;
     private TextView ageInfo;
     private TextView monitorInfo;
+    private TextView journalView;
     private HardwareReport latest;
     private String exportJson;
     private SensorManager activeSensors;
@@ -170,6 +176,8 @@ public final class MainActivity extends Activity {
         buttons(controls,
                 button("نسخ التقرير", Color.rgb(40, 113, 145), v -> copy()),
                 button("البوصلة والجيروسكوب", Color.rgb(42, 115, 88), v -> startActivity(new Intent(this, InstrumentsActivity.class))));
+        controls.addView(button("استرجاع عدادات المراقبة من تقرير JSON محفوظ",
+                Color.rgb(42, 115, 88), v -> importReport()));
         box(root, controls);
 
         LinearLayout ageBlock = vertical();
@@ -181,8 +189,20 @@ public final class MainActivity extends Activity {
         buttons(ageBlock,
                 button("بدء مراقبة مستمرة", Color.rgb(40, 126, 91), v -> startMonitor()),
                 button("إيقاف المراقبة", Color.rgb(150, 67, 73), v -> stopMonitor()));
-        ageBlock.addView(text("لا تحتاج إدخال تاريخ يدوي. يُقرأ وقت الإقلاع الحقيقي وتُجمع أزمنة الشاشة والشحن منذ بدء المراقبة فقط. قد يوقف ColorOS المراقبة في الخلفية.", 12, Color.rgb(236, 202, 129), false));
+        ageBlock.addView(text("لا تحتاج إدخال تاريخ يدوي. بدءًا من هذا الإصدار، تُسجل أحداث الشاشة والشحن حتى الثانية. الفترات غير المرصودة لا تُحسب بوصفها مشاهدات مؤكدة.", 12, Color.rgb(236, 202, 129), false));
         box(root, ageBlock);
+
+        LinearLayout journalBlock = vertical();
+        journalBlock.addView(text("السجل الزمني للمراقبة", 17, ACCENT, true));
+        journalBlock.addView(text("أحدث الأحداث أولًا • تُحفظ محليًا • التوقيت حسب ساعة الهاتف", 12, MUTED, false));
+        buttons(journalBlock,
+                button("عرض كل الأحداث", Color.rgb(40, 113, 145), v -> fullJournal()),
+                button("تحديث السجل", Color.rgb(42, 115, 88), v -> refresh()));
+        journalView = text("", 12, Color.WHITE, false);
+        journalView.setTextIsSelectable(true);
+        journalBlock.addView(journalView);
+        journalBlock.addView(text("الحالات المبدئية ليست أحداث انتقال. قد يفقد النظام أحداثًا إذا أوقف خدمة المراقبة؛ تُبيّن الفجوات المكتشفة صراحة.", 12, Color.rgb(236, 202, 129), false));
+        box(root, journalBlock);
 
         LinearLayout testBlock = vertical();
         testBlock.addView(text("اختبارات عملية عند الطلب", 17, Color.WHITE, true));
@@ -224,6 +244,7 @@ public final class MainActivity extends Activity {
                 box(reportContainer, content);
             }
             displayAge();
+            displayJournal();
         } catch (Exception e) {
             show("تعذر تحديث البيانات: " + e.getMessage());
         }
@@ -237,10 +258,32 @@ public final class MainActivity extends Activity {
         ageInfo.setText("أول تشغيل رصده التطبيق: " +
                 (first <= 0 ? "غير متاح" : format.format(new java.util.Date(first))) +
                 "\nلا يمكن الجزم بتاريخ تصنيع الهاتف أو تشغيله الأول دون سجل موثوق.");
-        monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.duration(p.getLong("monitor_ms", 0)) +
-                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
-                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
-                "\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
+        monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.durationSeconds(p.getLong("monitor_ms", 0)) +
+                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.durationSeconds(p.getLong("screen_ms", 0)) +
+                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.durationSeconds(p.getLong("charging_ms", 0)) +
+                "\nفترات تعذّر رصدها: " + HardwareReport.durationSeconds(p.getLong("unobserved_ms", 0)));
+    }
+
+    private void displayJournal() {
+        if (journalView == null) return;
+        journalView.setText(EventJournal.recentText(this, 12));
+    }
+
+    private void fullJournal() {
+        Dialog dialog = new Dialog(this);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(BG);
+        TextView contents = text(EventJournal.recentText(this, 300),
+                13, Color.WHITE, false);
+        contents.setTextIsSelectable(true);
+        contents.setPadding(dp(18), dp(16), dp(18), dp(16));
+        scroll.addView(contents);
+        dialog.setContentView(scroll);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(-1, (int)(getResources()
+                    .getDisplayMetrics().heightPixels * .83f));
+        }
     }
 
     private void startMonitor() {
@@ -258,9 +301,13 @@ public final class MainActivity extends Activity {
     }
 
     private void stopMonitor() {
-        stopService(new Intent(this, MonitorService.class));
-        handler.postDelayed(this::refresh, 350);
-        show("طلب إيقاف المراقبة. تبقى السجلات المسجلة محفوظة.");
+        try {
+            startService(new Intent(this, MonitorService.class).setAction(MonitorService.STOP));
+            handler.postDelayed(this::refresh, 900);
+            show("طلب إيقاف المراقبة؛ سيُسجل الحدث بالثواني.");
+        } catch (Exception e) {
+            show("تعذر طلب إيقاف الخدمة: " + e.getMessage());
+        }
     }
 
     private void copy() {
@@ -269,6 +316,50 @@ public final class MainActivity extends Activity {
         ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         cb.setPrimaryClip(ClipData.newPlainText("Hardware Inspector Pro", latest.asText()));
         show("نُسخ التقرير النصي");
+    }
+
+    private void importReport() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/json");
+        startActivityForResult(i, REQUEST_IMPORT);
+    }
+
+    private void confirmReportImport(Intent data) {
+        if (data == null || data.getData() == null) return;
+        try (InputStream in = getContentResolver().openInputStream(data.getData())) {
+            if (in == null) throw new IllegalArgumentException("تعذر فتح ملف JSON");
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = in.read(buffer)) != -1) {
+                if (bytes.size() + count > 2_000_000) {
+                    throw new IllegalArgumentException("التقرير أكبر من الحد المسموح (2 MB)");
+                }
+                bytes.write(buffer, 0, count);
+            }
+            MonitorBackup.Snapshot backup = MonitorBackup.parse(this,
+                    new JSONObject(new String(bytes.toByteArray(), StandardCharsets.UTF_8)));
+            new AlertDialog.Builder(this)
+                    .setTitle("استرجاع عدادات المراقبة")
+                    .setMessage(MonitorBackup.preview(backup))
+                    .setNegativeButton("إلغاء", (d, which) -> d.dismiss())
+                    .setPositiveButton("استرجاع", (d, which) -> {
+                        try {
+                            MonitorBackup.restore(this, backup);
+                            refresh();
+                            show("تم استرجاع العدادات المتاحة من التقرير");
+                        } catch (Exception e) {
+                            new AlertDialog.Builder(this)
+                                    .setTitle("تعذر الاسترجاع")
+                                    .setMessage(e.getMessage())
+                                    .setPositiveButton("حسنًا", null).show();
+                        }
+                    }).show();
+        } catch (Exception e) {
+            new AlertDialog.Builder(this).setTitle("ملف غير صالح للاسترجاع")
+                    .setMessage(e.getMessage()).setPositiveButton("حسنًا", null).show();
+        }
     }
 
     private void export() {
@@ -284,6 +375,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == REQUEST_IMPORT && result == RESULT_OK) {
+            confirmReportImport(data);
+            return;
+        }
         if (code == REQUEST_SAVE && result == RESULT_OK && data != null && data.getData() != null && exportJson != null) {
             try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
                 if (out != null) {

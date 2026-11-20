@@ -268,16 +268,29 @@ public final class HardwareReport {
         try {
             WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifi != null) {
-                put(s, "Wi-Fi", wifi.isWifiEnabled() ? "مفعّل" : "معطّل");
-                if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    WifiInfo info = wifi.getConnectionInfo();
-                    if (info != null) {
-                        put(s, "اسم الشبكة الحالية", info.getSSID());
-                        put(s, "قوة الإشارة", info.getRssi() + " dBm");
-                        put(s, "سرعة الربط المعلنة", info.getLinkSpeed() + " Mbps (ليست سرعة الإنترنت)");
-                        put(s, "تردد Wi-Fi", info.getFrequency() + " MHz");
+                boolean enabled = wifi.isWifiEnabled();
+                put(s, "Wi-Fi", enabled ? "مفعّل" : "معطّل");
+                if (!enabled) {
+                    put(s, "تفاصيل Wi-Fi", "الواجهة معطّلة؛ لا تُعرض قياسات قديمة أو قيم غير صالحة");
+                } else if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    WifiInfo connection = wifi.getConnectionInfo();
+                    if (connection == null || connection.getNetworkId() < 0
+                            || connection.getSSID() == null
+                            || WifiManager.UNKNOWN_SSID.equals(connection.getSSID())) {
+                        put(s, "تفاصيل Wi-Fi", "Wi-Fi مفعّل لكن لا توجد بيانات اتصال حالية صالحة");
+                    } else {
+                        put(s, "اسم شبكة Wi-Fi الحالية", connection.getSSID());
+                        int rssi = connection.getRssi();
+                        int speed = connection.getLinkSpeed();
+                        int mhz = connection.getFrequency();
+                        if (rssi > -127 && rssi < 0) put(s, "قوة إشارة Wi-Fi", rssi + " dBm");
+                        if (speed > 0) put(s, "سرعة ربط Wi-Fi", speed + " Mbps (ليست سرعة الإنترنت)");
+                        if (mhz > 0) put(s, "تردد Wi-Fi", mhz + " MHz");
                     }
-                } else put(s, "SSID / RSSI", "يتطلب إذن الموقع وتفعيل خدماته");
+                } else {
+                    put(s, "تفاصيل Wi-Fi", "يلزم إذن الموقع لقراءة معلومات Wi-Fi في Android 9");
+                }
             }
         } catch (Exception e) { put(s, "تفاصيل Wi-Fi", NA); }
         try {
@@ -337,11 +350,18 @@ public final class HardwareReport {
         long observed = p.getLong("first_seen", 0);
         put(s, "أول رصد بواسطة هذا التطبيق", observed == 0 ? NA :
                 new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(observed)));
-        put(s, "مدة تشغيل المراقب المسجلة", duration(p.getLong("monitor_ms", 0)));
-        put(s, "مدة إضاءة الشاشة المسجلة أثناء المراقبة", duration(p.getLong("screen_ms", 0)));
-        put(s, "مدة الشحن المسجلة أثناء المراقبة", duration(p.getLong("charging_ms", 0)));
-        put(s, "فترات تعذر تتبعها (لا تُحتسب)", duration(p.getLong("unobserved_ms", 0)));
+        put(s, "مدة تشغيل المراقب المسجلة", durationSeconds(p.getLong("monitor_ms", 0)));
+        put(s, "مدة إضاءة الشاشة المسجلة أثناء المراقبة", durationSeconds(p.getLong("screen_ms", 0)));
+        put(s, "مدة الشحن المسجلة أثناء المراقبة", durationSeconds(p.getLong("charging_ms", 0)));
+        put(s, "فترات تعذر تتبعها (لا تُحتسب)", durationSeconds(p.getLong("unobserved_ms", 0)));
         put(s, "تغطية سجل الاستخدام", "منذ تفعيل المراقبة داخل التطبيق؛ ليس سجل عمر القطع");
+        put(s, "حالة آخر جلسة حسب السجل", p.getBoolean("monitor_running", false)
+                ? "معلّمة كنشطة؛ لا يضمن ذلك بقاء الخدمة حية عند إصدار التقرير"
+                : "متوقفة حسب آخر تسجيل");
+        put(s, "آخر نقطة تحقق زمنية", p.getLong("monitor_last_checkpoint_wall", 0) > 0
+                ? EventJournal.clock(p.getLong("monitor_last_checkpoint_wall", 0))
+                : "لا تتوفر نقطة تحقق مسجلة");
+        put(s, "حالات انقطاع لا يمكن توثيقها", "تُسجل في السجل الزمني عند اكتشافها؛ لا تُختلق أزمنة سابقة");
         put(s, "فترات تعذر المراقبة", "لا تُعوَّض بتقديرات افتراضية");
         put(s, "الجيروسكوب وزمن عمل الكاميرا", "لا يوفر Android عداد ساعات عمر تراكمي لهذه القطع");
         put(s, "ساعات التشغيل التراكمية للقطع قبل تثبيت التطبيق", NA);
@@ -391,6 +411,16 @@ public final class HardwareReport {
         return String.format(Locale.US, "%.2f GiB", bytes / 1073741824.0);
     }
 
+    /** Exact to one second; elapsedRealtime is monotonic within a boot. */
+    public static String durationSeconds(long millis) {
+        long seconds = Math.max(0, millis / 1000);
+        long days = seconds / 86400;
+        long hours = (seconds % 86400) / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long sec = seconds % 60;
+        return String.format(Locale.US, "%d يوم %02d:%02d:%02d", days, hours, minutes, sec);
+    }
+
     public static String duration(long millis) {
         long minutes = Math.max(0, millis / 60000);
         long days = minutes / 1440;
@@ -408,13 +438,15 @@ public final class HardwareReport {
                 s.append("  ").append(row.getKey()).append(": ").append(row.getValue()).append("\n");
             s.append("\n");
         }
+        s.append("سجل المراقبة الزمني (آخر 30 حدثًا)\n");
+        s.append(EventJournal.recentText(context, 30)).append("\n");
         return s.toString();
     }
 
     public String asJson() {
         try {
             JSONObject report = new JSONObject();
-            report.put("schema", "HardwareInspectorPro-v1");
+            report.put("schema", "HardwareInspectorPro-v2");
             report.put("collectedAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).format(new Date()));
             report.put("device", Build.MANUFACTURER + " " + Build.MODEL);
             JSONObject blocks = new JSONObject();
@@ -424,7 +456,8 @@ public final class HardwareReport {
                 blocks.put(block.getKey(), rows);
             }
             report.put("sections", blocks);
-            report.put("provenance", "Android public APIs; user-entered values are labeled; unsupported counters remain unavailable");
+            report.put("monitoring", EventJournal.json(context));
+            report.put("provenance", "Android public APIs, observed monitoring events and read-only telemetry; unsupported counters remain unavailable.");
             return report.toString(2);
         } catch (Exception e) {
             return "{\"error\":\"serialization failed\"}";
