@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private TextView testOutput;
     private TextView ageInfo;
     private TextView monitorInfo;
+    private TextView journalView;
     private HardwareReport latest;
     private String exportJson;
     private SensorManager activeSensors;
@@ -181,8 +182,20 @@ public final class MainActivity extends Activity {
         buttons(ageBlock,
                 button("بدء مراقبة مستمرة", Color.rgb(40, 126, 91), v -> startMonitor()),
                 button("إيقاف المراقبة", Color.rgb(150, 67, 73), v -> stopMonitor()));
-        ageBlock.addView(text("لا تحتاج إدخال تاريخ يدوي. يُقرأ وقت الإقلاع الحقيقي وتُجمع أزمنة الشاشة والشحن منذ بدء المراقبة فقط. قد يوقف ColorOS المراقبة في الخلفية.", 12, Color.rgb(236, 202, 129), false));
+        ageBlock.addView(text("لا تحتاج إدخال تاريخ يدوي. بدءًا من هذا الإصدار، تُسجل أحداث الشاشة والشحن حتى الثانية. الفترات غير المرصودة لا تُحسب بوصفها مشاهدات مؤكدة.", 12, Color.rgb(236, 202, 129), false));
         box(root, ageBlock);
+
+        LinearLayout journalBlock = vertical();
+        journalBlock.addView(text("السجل الزمني للمراقبة", 17, ACCENT, true));
+        journalBlock.addView(text("أحدث الأحداث أولًا • تُحفظ محليًا • التوقيت حسب ساعة الهاتف", 12, MUTED, false));
+        buttons(journalBlock,
+                button("عرض كل الأحداث", Color.rgb(40, 113, 145), v -> fullJournal()),
+                button("تحديث السجل", Color.rgb(42, 115, 88), v -> refresh()));
+        journalView = text("", 12, Color.WHITE, false);
+        journalView.setTextIsSelectable(true);
+        journalBlock.addView(journalView);
+        journalBlock.addView(text("الحالات المبدئية ليست أحداث انتقال. قد يفقد النظام أحداثًا إذا أوقف خدمة المراقبة؛ تُبيّن الفجوات المكتشفة صراحة.", 12, Color.rgb(236, 202, 129), false));
+        box(root, journalBlock);
 
         LinearLayout testBlock = vertical();
         testBlock.addView(text("اختبارات عملية عند الطلب", 17, Color.WHITE, true));
@@ -224,6 +237,7 @@ public final class MainActivity extends Activity {
                 box(reportContainer, content);
             }
             displayAge();
+            displayJournal();
         } catch (Exception e) {
             show("تعذر تحديث البيانات: " + e.getMessage());
         }
@@ -237,10 +251,32 @@ public final class MainActivity extends Activity {
         ageInfo.setText("أول تشغيل رصده التطبيق: " +
                 (first <= 0 ? "غير متاح" : format.format(new java.util.Date(first))) +
                 "\nلا يمكن الجزم بتاريخ تصنيع الهاتف أو تشغيله الأول دون سجل موثوق.");
-        monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.duration(p.getLong("monitor_ms", 0)) +
-                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.duration(p.getLong("screen_ms", 0)) +
-                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.duration(p.getLong("charging_ms", 0)) +
-                "\nفترات تعذّر رصدها: " + HardwareReport.duration(p.getLong("unobserved_ms", 0)));
+        monitorInfo.setText("مدة المراقبة المسجلة: " + HardwareReport.durationSeconds(p.getLong("monitor_ms", 0)) +
+                "\nإضاءة الشاشة أثناء المراقبة: " + HardwareReport.durationSeconds(p.getLong("screen_ms", 0)) +
+                "\nمدة الشحن أثناء المراقبة: " + HardwareReport.durationSeconds(p.getLong("charging_ms", 0)) +
+                "\nفترات تعذّر رصدها: " + HardwareReport.durationSeconds(p.getLong("unobserved_ms", 0)));
+    }
+
+    private void displayJournal() {
+        if (journalView == null) return;
+        journalView.setText(EventJournal.recentText(this, 12));
+    }
+
+    private void fullJournal() {
+        Dialog dialog = new Dialog(this);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(BG);
+        TextView contents = text(EventJournal.recentText(this, 300),
+                13, Color.WHITE, false);
+        contents.setTextIsSelectable(true);
+        contents.setPadding(dp(18), dp(16), dp(18), dp(16));
+        scroll.addView(contents);
+        dialog.setContentView(scroll);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(-1, (int)(getResources()
+                    .getDisplayMetrics().heightPixels * .83f));
+        }
     }
 
     private void startMonitor() {
@@ -258,9 +294,13 @@ public final class MainActivity extends Activity {
     }
 
     private void stopMonitor() {
-        stopService(new Intent(this, MonitorService.class));
-        handler.postDelayed(this::refresh, 350);
-        show("طلب إيقاف المراقبة. تبقى السجلات المسجلة محفوظة.");
+        try {
+            startService(new Intent(this, MonitorService.class).setAction(MonitorService.STOP));
+            handler.postDelayed(this::refresh, 900);
+            show("طلب إيقاف المراقبة؛ سيُسجل الحدث بالثواني.");
+        } catch (Exception e) {
+            show("تعذر طلب إيقاف الخدمة: " + e.getMessage());
+        }
     }
 
     private void copy() {
