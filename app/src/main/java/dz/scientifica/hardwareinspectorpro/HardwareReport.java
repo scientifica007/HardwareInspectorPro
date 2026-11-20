@@ -40,8 +40,6 @@ import android.view.WindowManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.time.LocalDate;
-import java.time.Period;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -69,6 +67,7 @@ public final class HardwareReport {
         r.device();
         r.battery();
         r.cpuMemory();
+        r.storageWear();
         r.display();
         r.sensors();
         r.cameras();
@@ -315,21 +314,24 @@ public final class HardwareReport {
         put(s, "زمن تشغيل المكبر والكاميرا والميكروفون منذ شراء الهاتف", NA);
     }
 
+    private void storageWear() {
+        String s = "10 | اهتراء التخزين eMMC وعدادات I/O";
+        for (Map.Entry<String, String> row : StorageWear.probe().entrySet()) {
+            put(s, row.getKey(), row.getValue());
+        }
+    }
+
     private void lifetime() {
         String s = "09 | العمر وساعات التشغيل";
         put(s, "الوقت منذ آخر إقلاع (بما فيه النوم)", duration(SystemClock.elapsedRealtime()));
         put(s, "وقت يقظة النظام منذ آخر إقلاع (دون النوم العميق)", duration(SystemClock.uptimeMillis()));
         put(s, "تاريخ تصنيع الهاتف الفعلي", NA);
         SharedPreferences p = context.getSharedPreferences(MonitorService.PREFS, Context.MODE_PRIVATE);
-        String firstUse = p.getString("first_use", "");
-        put(s, "أول استعمال يدوي مدخل", firstUse.isEmpty() ? "لم يُدخل المستخدم تاريخًا" : firstUse);
-        if (!firstUse.isEmpty()) {
-            try {
-                Period age = Period.between(LocalDate.parse(firstUse), LocalDate.now());
-                if (!age.isNegative()) put(s, "العمر منذ تاريخ الاستعمال المدخل (حساب وليس قياسًا)",
-                    age.getYears() + " سنة و" + age.getMonths() + " شهر و" + age.getDays() + " يوم");
-            } catch (Exception ignored) { put(s, "عمر الاستعمال المحسوب", "التاريخ المدخل غير صالح"); }
-        }
+        put(s, "تاريخ أول استعمال للهاتف", "لا يوجد مصدر محلي عام موثوق لهذا التاريخ؛ لا يُطلب إدخاله يدويًا");
+        long elapsed = SystemClock.elapsedRealtime();
+        put(s, "آخر إقلاع تقريبي (محسوب من عداد التشغيل)",
+                new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.US)
+                    .format(new Date(System.currentTimeMillis() - elapsed)));
         long observed = p.getLong("first_seen", 0);
         put(s, "أول رصد بواسطة هذا التطبيق", observed == 0 ? NA :
                 new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(observed)));
@@ -338,6 +340,8 @@ public final class HardwareReport {
         put(s, "مدة الشحن المسجلة أثناء المراقبة", duration(p.getLong("charging_ms", 0)));
         put(s, "فترات تعذر تتبعها (لا تُحتسب)", duration(p.getLong("unobserved_ms", 0)));
         put(s, "تغطية سجل الاستخدام", "منذ تفعيل المراقبة داخل التطبيق؛ ليس سجل عمر القطع");
+        put(s, "فترات تعذر المراقبة", "لا تُعوَّض بتقديرات افتراضية");
+        put(s, "الجيروسكوب وزمن عمل الكاميرا", "لا يوفر Android عداد ساعات عمر تراكمي لهذه القطع");
         put(s, "ساعات التشغيل التراكمية للقطع قبل تثبيت التطبيق", NA);
     }
 
