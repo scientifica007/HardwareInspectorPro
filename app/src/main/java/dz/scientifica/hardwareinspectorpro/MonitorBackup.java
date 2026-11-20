@@ -122,6 +122,10 @@ public final class MonitorBackup {
         if (p.getBoolean("monitor_running", false)) {
             throw new IllegalStateException("أوقف المراقبة قبل استرجاع البيانات");
         }
+        if (EventJournal.events(context).length() > 0) {
+            throw new IllegalStateException(
+                    "يوجد سجل أحداث في التطبيق؛ الاسترجاع متاح قبل بدء أي مراقبة جديدة فقط");
+        }
         if (p.getLong("monitor_ms", 0) > 0 || p.getLong("screen_ms", 0) > 0
                 || p.getLong("charging_ms", 0) > 0) {
             throw new IllegalStateException(
