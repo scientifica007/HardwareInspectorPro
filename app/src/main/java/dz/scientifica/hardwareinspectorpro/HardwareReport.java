@@ -40,6 +40,8 @@ import android.view.WindowManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -321,12 +323,20 @@ public final class HardwareReport {
         SharedPreferences p = context.getSharedPreferences(MonitorService.PREFS, Context.MODE_PRIVATE);
         String firstUse = p.getString("first_use", "");
         put(s, "أول استعمال يدوي مدخل", firstUse.isEmpty() ? "لم يُدخل المستخدم تاريخًا" : firstUse);
+        if (!firstUse.isEmpty()) {
+            try {
+                Period age = Period.between(LocalDate.parse(firstUse), LocalDate.now());
+                if (!age.isNegative()) put(s, "العمر منذ تاريخ الاستعمال المدخل (حساب وليس قياسًا)",
+                    age.getYears() + " سنة و" + age.getMonths() + " شهر و" + age.getDays() + " يوم");
+            } catch (Exception ignored) { put(s, "عمر الاستعمال المحسوب", "التاريخ المدخل غير صالح"); }
+        }
         long observed = p.getLong("first_seen", 0);
         put(s, "أول رصد بواسطة هذا التطبيق", observed == 0 ? NA :
                 new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(observed)));
         put(s, "مدة تشغيل المراقب المسجلة", duration(p.getLong("monitor_ms", 0)));
         put(s, "مدة إضاءة الشاشة المسجلة أثناء المراقبة", duration(p.getLong("screen_ms", 0)));
         put(s, "مدة الشحن المسجلة أثناء المراقبة", duration(p.getLong("charging_ms", 0)));
+        put(s, "فترات تعذر تتبعها (لا تُحتسب)", duration(p.getLong("unobserved_ms", 0)));
         put(s, "تغطية سجل الاستخدام", "منذ تفعيل المراقبة داخل التطبيق؛ ليس سجل عمر القطع");
         put(s, "ساعات التشغيل التراكمية للقطع قبل تثبيت التطبيق", NA);
     }
