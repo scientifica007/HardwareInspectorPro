@@ -1,14 +1,13 @@
-name: Build Android APK
+name: Validate Android Sources and Signing Configuration
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
-  assemble:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,31 +23,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compile native Android app
+      - name: Compile debug sources (not an updateable distribution APK)
         run: gradle --no-daemon :app:assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: HardwareInspectorPro-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Publish versioned debug APK to Releases (main branch only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Exercise release signing with an ephemeral CI-only key
         run: |
           set -euo pipefail
-          VERSION=$(sed -n -E 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)
-          test -n "$VERSION"
-          TAG="v$VERSION"
-          RELEASE_FILE="HardwareInspectorPro-$TAG-debug.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "$RELEASE_FILE"
-          sha256sum "$RELEASE_FILE" > "$RELEASE_FILE.sha256"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists: skip (releases are immutable per version)"
-          else
-            gh release create "$TAG" "$RELEASE_FILE" "$RELEASE_FILE.sha256" \
-              --title "Hardware Inspector Pro $TAG (test APK)" \
-              --notes "Experimental native Android APK for OPPO A12 (Android 9) and compatible phones. Manual first-use date entry removed. Compass, gyro and read-only eMMC wear checks included. This is a DEBUG-signed APK, not a production distribution. Android may require uninstalling older debug builds due to signing-key differences; export reports first. No root needed. Wear counters may be unavailable because of OEM restrictions." \
-              --prerelease --target "$GITHUB_SHA"
-          fi
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/ci-only.p12" \
+            -storetype PKCS12 -storepass "CI_ONLY_KEY_NOT_FOR_DISTRIBUTION_2026" \
+            -keypass "CI_ONLY_KEY_NOT_FOR_DISTRIBUTION_2026" \
+            -alias hardware-inspector-prod -keyalg RSA -keysize 2048 \
+            -validity 2 -dname "CN=CI temporary, O=Not for distribution"
+          HIP_KEYSTORE_PATH="$RUNNER_TEMP/ci-only.p12" \
+            HIP_KEYSTORE_PASSWORD="CI_ONLY_KEY_NOT_FOR_DISTRIBUTION_2026" \
+            gradle --no-daemon :app:assembleRelease
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose \
+            app/build/outputs/apk/release/app-release.apk
+      # Deliberately no APK artifact here. This job uses an ephemeral debug
+      # or test key and must not be used for app updates.
